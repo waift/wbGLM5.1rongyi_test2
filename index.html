@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>像素消消乐</title>
+<style>
+  :root {
+    --pixel-bg: #1a1a2e;
+    --pixel-dark: #16213e;
+    --pixel-mid: #0f3460;
+    --pixel-accent: #e94560;
+    --pixel-gold: #ffd700;
+    --pixel-white: #eaeaea;
+    --pixel-gray: #7a7a8e;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  body {
+    background: var(--pixel-bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100dvh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #game-container {
+    width: min(100vw, 430px);
+    min-height: 100dvh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Scanline overlay */
+  #game-container::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+  .screen { display:none; flex-direction:column; align-items:center; width:100%; height:100dvh; }
+  .screen.active { display:flex; }
+
+  /* MENU SCREEN */
+  #menu-screen {
+    justify-content: center;
+    gap: 30px;
+  }
+  .menu-title {
+    font-size: 36px;
+    font-weight: bold;
+    color: var(--pixel-gold);
+    text-shadow: 3px 3px 0 #b8860b, -1px -1px 0 #fff5;
+    letter-spacing: 4px;
+    text-align: center;
+  }
+  .menu-subtitle {
+    font-size: 14px;
+    color: var(--pixel-gray);
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  .menu-gems {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 10px 0;
+  }
+  .menu-gem-dot {
+    width: 20px; height: 20px;
+    border: 2px solid #fff3;
+    image-rendering: pixelated;
+  }
+  .pixel-btn {
+    background: var(--pixel-mid);
+    color: var(--pixel-white);
+    border: 3px solid var(--pixel-accent);
+    padding: 14px 40px;
+    font-size: 18px;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    letter-spacing: 2px;
+    cursor: pointer;
+    position: relative;
+    transition: none;
+  }
+  .pixel-btn:active {
+    background: var(--pixel-accent);
+    transform: translate(2px, 2px);
+  }
+  .pixel-btn::before {
+    content: '';
+    position: absolute;
+    top: -3px; left: -3px; right: -3px; bottom: -3px;
+    border: 2px solid var(--pixel-gold);
+    opacity: 0.3;
+  }
+
+  /* GAME SCREEN */
+  #game-screen {
+    padding: 10px;
+    gap: 8px;
+  }
+  .game-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0 5px;
+  }
+  .header-item {
+    text-align: center;
+  }
+  .header-label {
+    font-size: 10px;
+    color: var(--pixel-gray);
+    letter-spacing: 1px;
+  }
+  .header-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: var(--pixel-gold);
+  }
+  #combo-display {
+    color: var(--pixel-accent);
+    transition: none;
+  }
+  #game-canvas {
+    image-rendering: pixelated;
+    border: 3px solid var(--pixel-mid);
+    background: var(--pixel-dark);
+    touch-action: none;
+  }
+  .game-controls {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .ctrl-btn {
+    background: var(--pixel-dark);
+    color: var(--pixel-gray);
+    border: 2px solid var(--pixel-mid);
+    padding: 8px 18px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+  .ctrl-btn:active {
+    background: var(--pixel-mid);
+    color: var(--pixel-white);
+  }
+
+  /* GAME OVER OVERLAY */
+  #gameover-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 50;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 20px;
+  }
+  #gameover-overlay.active { display: flex; }
+  .go-title {
+    font-size: 32px;
+    color: var(--pixel-accent);
+    font-weight: bold;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 0 #000;
+  }
+  .go-score {
+    font-size: 20px;
+    color: var(--pixel-gold);
+  }
+  .go-best {
+    font-size: 14px;
+    color: var(--pixel-gray);
+  }
+
+  /* Combo popup */
+  .combo-popup {
+    position: absolute;
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--pixel-accent);
+    text-shadow: 2px 2px 0 #000;
+    pointer-events: none;
+    animation: comboFade 0.8s ease-out forwards;
+    z-index: 30;
+  }
+  @keyframes comboFade {
+    0% { opacity:1; transform:scale(0.5) translateY(0); }
+    30% { opacity:1; transform:scale(1.3) translateY(-10px); }
+    100% { opacity:0; transform:scale(1) translateY(-50px); }
+  }
+
+  /* Score popup */
+  .score-popup {
+    position: absolute;
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--pixel-gold);
+    text-shadow: 1px 1px 0 #000;
+    pointer-events: none;
+    animation: scoreFade 0.6s ease-out forwards;
+    z-index: 30;
+  }
+  @keyframes scoreFade {
+    0% { opacity:1; transform:translateY(0); }
+    100% { opacity:0; transform:translateY(-30px); }
+  }
+</style>
+</head>
+<body>
+<div id="game-container">
+
+  <!-- MENU SCREEN -->
+  <div id="menu-screen" class="screen active">
+    <div class="menu-title">像素消消乐</div>
+    <div class="menu-subtitle">PIXEL MATCH 3</div>
+    <div class="menu-gems">
+      <div class="menu-gem-dot" style="background:#e94560"></div>
+      <div class="menu-gem-dot" style="background:#4ecdc4"></div>
+      <div class="menu-gem-dot" style="background:#ffe66d"></div>
+      <div class="menu-gem-dot" style="background:#a855f7"></div>
+      <div class="menu-gem-dot" style="background:#fb923c"></div>
+      <div class="menu-gem-dot" style="background:#38bdf8"></div>
+    </div>
+    <button class="pixel-btn" onclick="startGame()">开始游戏</button>
+    <div style="font-size:11px;color:var(--pixel-gray);text-align:center;line-height:1.8">
+      交换相邻宝石<br>3连以上即可消除<br>连击combo得分翻倍
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen">
+    <div class="game-header">
+      <div class="header-item">
+        <div class="header-label">SCORE</div>
+        <div class="header-value" id="score-display">0</div>
+      </div>
+      <div class="header-item">
+        <div class="header-label">COMBO</div>
+        <div class="header-value" id="combo-display">x1</div>
+      </div>
+      <div class="header-item">
+        <div class="header-label">MOVES</div>
+        <div class="header-value" id="moves-display">0</div>
+      </div>
+      <div class="header-item">
+        <div class="header-label">BEST</div>
+        <div class="header-value" id="best-display">0</div>
+      </div>
+    </div>
+    <canvas id="game-canvas"></canvas>
+    <div class="game-controls">
+      <button class="ctrl-btn" onclick="restartGame()">重新开始</button>
+      <button class="ctrl-btn" onclick="showHint()">提示</button>
+      <button class="ctrl-btn" onclick="backToMenu()">返回菜单</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER OVERLAY -->
+  <div id="gameover-overlay">
+    <div class="go-title">GAME OVER</div>
+    <div class="go-score" id="go-score">得分: 0</div>
+    <div class="go-best" id="go-best">最高: 0</div>
+    <button class="pixel-btn" onclick="restartGame()">再来一局</button>
+    <button class="ctrl-btn" onclick="backToMenu()" style="margin-top:5px">返回菜单</button>
+  </div>
+
+</div>
+
+<script>
+// ========== CONSTANTS ==========
+const COLS = 8, ROWS = 8, GEM_TYPES = 6;
+const ANIM_SPEED = 0.12; // animation interpolation speed
+const FALL_SPEED = 0.15;
+
+// Gem pixel art patterns (7x7 grids)
+// 0=empty, 1=main color, 2=highlight, 3=shadow
+const GEM_PATTERNS = [
+  // Ruby (Red) - Heart
+  [
+    [0,0,1,0,1,0,0],
+    [0,1,2,1,2,1,0],
+    [1,2,2,1,2,2,1],
+    [1,1,1,1,1,1,1],
+    [0,1,1,1,1,1,0],
+    [0,0,1,1,1,0,0],
+    [0,0,0,1,0,0,0],
+  ],
+  // Teal - Diamond
+  [
+    [0,0,0,1,0,0,0],
+    [0,0,1,2,1,0,0],
+    [0,1,2,2,2,1,0],
+    [1,1,2,2,2,1,1],
+    [0,1,3,3,3,1,0],
+    [0,0,1,3,1,0,0],
+    [0,0,0,1,0,0,0],
+  ],
+  // Yellow - Star
+  [
+    [0,0,0,1,0,0,0],
+    [0,0,1,2,1,0,0],
+    [1,1,1,2,1,1,1],
+    [1,2,2,2,2,2,1],
+    [0,1,1,2,1,1,0],
+    [0,1,0,1,0,1,0],
+    [1,0,0,0,0,0,1],
+  ],
+  // Purple - Square gem
+  [
+    [0,0,1,1,1,0,0],
+    [0,1,2,2,2,1,0],
+    [1,2,2,2,2,2,1],
+    [1,2,2,2,2,2,1],
+    [1,2,2,2,2,2,1],
+    [0,1,3,3,3,1,0],
+    [0,0,1,1,1,0,0],
+  ],
+  // Orange - Circle
+  [
+    [0,0,1,1,1,0,0],
+    [0,1,2,2,2,1,0],
+    [1,2,2,2,2,2,1],
+    [1,2,2,2,2,2,1],
+    [1,1,2,2,2,1,1],
+    [0,1,3,3,3,1,0],
+    [0,0,1,1,1,0,0],
+  ],
+  // Blue - Triangle
+  [
+    [0,0,0,1,0,0,0],
+    [0,0,1,2,1,0,0],
+    [0,0,1,2,1,0,0],
+    [0,1,2,2,2,1,0],
+    [0,1,2,2,2,1,0],
+    [1,1,1,2,1,1,1],
+    [1,1,1,1,1,1,1],
+  ],
+];
+
+const GEM_COLORS = [
+  { main:'#e94560', highlight:'#ff8fa3', shadow:'#a31535' },  // Red
+  { main:'#4ecdc4', highlight:'#8eeee8', shadow:'#2a9d96' },  // Teal
+  { main:'#ffe66d', highlight:'#fff4b8', shadow:'#ccb03e' },  // Yellow
+  { main:'#a855f7', highlight:'#d8b4fe', shadow:'#7e22ce' },  // Purple
+  { main:'#fb923c', highlight:'#fdba74', shadow:'#c2410c' },  // Orange
+  { main:'#38bdf8', highlight:'#7dd3fc', shadow:'#0369a1' },  // Blue
+];
+
+// ========== GAME STATE ==========
+let board = [];        // board[row][col] = gem type (0-5) or -1
+let displayY = [];     // displayY[row][col] = visual Y position for animation
+let selected = null;   // {row, col} or null
+let score = 0;
+let combo = 0;
+let moves = 0;
+let bestScore = 0;
+let isAnimating = false;
+let animQueue = [];     // animation queue
+let hintTimer = null;
+let hintCells = null;   // highlighted hint cells
+
+// Canvas
+let canvas, ctx;
+let cellSize, boardOffsetX, boardOffsetY, gemPixelSize;
+
+// ========== INIT ==========
+function initCanvas() {
+  canvas = document.getElementById('game-canvas');
+  ctx = canvas.getContext('2d');
+  
+  const containerWidth = Math.min(window.innerWidth, 430) - 20;
+  cellSize = Math.floor(containerWidth / COLS);
+  // Make cellSize odd for pixel alignment
+  if (cellSize % 2 === 0) cellSize--;
+  
+  const boardWidth = cellSize * COLS;
+  const boardHeight = cellSize * ROWS;
+  
+  // Use 2x resolution for crispness
+  canvas.width = boardWidth * 2;
+  canvas.height = boardHeight * 2;
+  canvas.style.width = boardWidth + 'px';
+  canvas.style.height = boardHeight + 'px';
+  ctx.scale(2, 2);
+  
+  boardOffsetX = 0;
+  boardOffsetY = 0;
+  gemPixelSize = Math.floor(cellSize / 7);
+}
+
+function initBoard() {
+  board = [];
+  displayY = [];
+  for (let r = 0; r < ROWS; r++) {
+    board[r] = [];
+    displayY[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      board[r][c] = randomGemNoMatch(r, c);
+      displayY[r][c] = r;
+    }
+  }
+}
+
+function randomGemNoMatch(row, col) {
+  let type;
+  let attempts = 0;
+  do {
+    type = Math.floor(Math.random() * GEM_TYPES);
+    attempts++;
+    if (attempts > 50) break;
+  } while (wouldMatch(row, col, type));
+  return type;
+}
+
+function wouldMatch(row, col, type) {
+  // Check horizontal
+  if (col >= 2 && board[row][col-1] === type && board[row][col-2] === type) return true;
+  // Check vertical
+  if (row >= 2 && board[row-1] && board[row-1][col] === type && 
+      board[row-2] && board[row-2][col] === type) return true;
+  return false;
+}
+
+// ========== DRAWING ==========
+function draw() {
+  ctx.clearRect(0, 0, canvas.width / 2, canvas.height / 2);
+  
+  // Draw board background
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = boardOffsetX + c * cellSize;
+      const y = boardOffsetY + r * cellSize;
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#1e2a45' : '#1a2440';
+      ctx.fillRect(x, y, cellSize, cellSize);
+    }
+  }
+  
+  // Draw gems
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] < 0) continue;
+      const type = board[r][c];
+      const x = boardOffsetX + c * cellSize;
+      const visualRow = displayY[r][c];
+      const y = boardOffsetY + visualRow * cellSize;
+      
+      // Clip to board area
+      if (y + cellSize < boardOffsetY) continue;
+      
+      drawGem(x, y, type, r, c);
+    }
+  }
+  
+  // Draw selection
+  if (selected && !isAnimating) {
+    const x = boardOffsetX + selected.col * cellSize;
+    const y = boardOffsetY + selected.row * cellSize;
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+    ctx.setLineDash([]);
+  }
+  
+  // Draw hint
+  if (hintCells && !isAnimating) {
+    const t = Date.now() / 300;
+    const alpha = 0.3 + 0.3 * Math.sin(t);
+    for (const cell of hintCells) {
+      const x = boardOffsetX + cell.col * cellSize;
+      const y = boardOffsetY + cell.row * cellSize;
+      ctx.fillStyle = `rgba(255,215,0,${alpha})`;
+      ctx.fillRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+    }
+  }
+}
+
+function drawGem(x, y, type, row, col) {
+  const pattern = GEM_PATTERNS[type];
+  const colors = GEM_COLORS[type];
+  const ps = gemPixelSize;
+  const offset = Math.floor((cellSize - 7 * ps) / 2);
+  
+  for (let pr = 0; pr < 7; pr++) {
+    for (let pc = 0; pc < 7; pc++) {
+      const val = pattern[pr][pc];
+      if (val === 0) continue;
+      
+      let color;
+      if (val === 1) color = colors.main;
+      else if (val === 2) color = colors.highlight;
+      else if (val === 3) color = colors.shadow;
+      
+      ctx.fillStyle = color;
+      ctx.fillRect(
+        Math.floor(x + offset + pc * ps),
+        Math.floor(y + offset + pr * ps),
+        ps, ps
+      );
+    }
+  }
+  
+  // Pixel border
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + offset, y + offset, 7 * ps, 7 * ps);
+}
+
+// ========== GAME LOGIC ==========
+function findMatches() {
+  const matched = new Set();
+  
+  // Horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS - 2; c++) {
+      const type = board[r][c];
+      if (type < 0) continue;
+      let len = 1;
+      while (c + len < COLS && board[r][c + len] === type) len++;
+      if (len >= 3) {
+        for (let i = 0; i < len; i++) matched.add(r * COLS + (c + i));
+      }
+      c += len - 1;
+    }
+  }
+  
+  // Vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS - 2; r++) {
+      const type = board[r][c];
+      if (type < 0) continue;
+      let len = 1;
+      while (r + len < ROWS && board[r + len][c] === type) len++;
+      if (len >= 3) {
+        for (let i = 0; i < len; i++) matched.add((r + i) * COLS + c);
+      }
+      r += len - 1;
+    }
+  }
+  
+  return matched;
+}
+
+function removeMatches(matched) {
+  let count = 0;
+  const cells = [];
+  matched.forEach(idx => {
+    const r = Math.floor(idx / COLS);
+    const c = idx % COLS;
+    cells.push({r, c});
+    board[r][c] = -1;
+    count++;
+  });
+  return { count, cells };
+}
+
+function applyGravity() {
+  const moves = [];
+  for (let c = 0; c < COLS; c++) {
+    let writeRow = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (board[r][c] >= 0) {
+        if (r !== writeRow) {
+          moves.push({ fromR: r, fromC: c, toR: writeRow, toC: c });
+          board[writeRow][c] = board[r][c];
+          board[r][c] = -1;
+          displayY[writeRow][c] = displayY[r][c]; // keep visual position for animation
+        }
+        writeRow--;
+      }
+    }
+    // Fill empty cells from top
+    for (let r = writeRow; r >= 0; r--) {
+      board[r][c] = Math.floor(Math.random() * GEM_TYPES);
+      displayY[r][c] = r - (writeRow + 1) - 1; // start above board
+      moves.push({ fromR: r - (writeRow + 1) - 1, fromC: c, toR: r, toC: c, isNew: true });
+    }
+  }
+  return moves;
+}
+
+function hasValidMoves() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      // Try swap right
+      if (c < COLS - 1) {
+        swap(r, c, r, c + 1);
+        if (findMatches().size > 0) { swap(r, c, r, c + 1); return true; }
+        swap(r, c, r, c + 1);
+      }
+      // Try swap down
+      if (r < ROWS - 1) {
+        swap(r, c, r + 1, c);
+        if (findMatches().size > 0) { swap(r, c, r + 1, c); return true; }
+        swap(r, c, r + 1, c);
+      }
+    }
+  }
+  return false;
+}
+
+function findHintMove() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (c < COLS - 1) {
+        swap(r, c, r, c + 1);
+        if (findMatches().size > 0) { swap(r, c, r, c + 1); return [{row:r,col:c},{row:r,col:c+1}]; }
+        swap(r, c, r, c + 1);
+      }
+      if (r < ROWS - 1) {
+        swap(r, c, r + 1, c);
+        if (findMatches().size > 0) { swap(r, c, r + 1, c); return [{row:r,col:c},{row:r+1,col:c}]; }
+        swap(r, c, r + 1, c);
+      }
+    }
+  }
+  return null;
+}
+
+function swap(r1, c1, r2, c2) {
+  const tmp = board[r1][c1];
+  board[r1][c1] = board[r2][c2];
+  board[r2][c2] = tmp;
+}
+
+function shuffleBoard() {
+  // Flatten, shuffle, refill
+  const gems = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      gems.push(board[r][c]);
+  
+  // Fisher-Yates shuffle
+  for (let i = gems.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [gems[i], gems[j]] = [gems[j], gems[i]];
+  }
+  
+  let idx = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      board[r][c] = gems[idx++];
+  
+  // If still no moves or has matches, reinit
+  if (!hasValidMoves() || findMatches().size > 0) {
+    initBoard();
+  }
+}
+
+// ========== ANIMATION ==========
+function animateValue(obj, key, target, speed) {
+  const diff = target - obj[key];
+  if (Math.abs(diff) < 0.01) {
+    obj[key] = target;
+    return true; // done
+  }
+  obj[key] += diff * speed;
+  return false;
+}
+
+let animFrame = null;
+function gameLoop() {
+  let needsDraw = false;
+  
+  // Animate display positions toward target
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (Math.abs(displayY[r][c] - r) > 0.01) {
+        displayY[r][c] += (r - displayY[r][c]) * FALL_SPEED;
+        needsDraw = true;
+      } else {
+        displayY[r][c] = r;
+      }
+    }
+  }
+  
+  if (isAnimating && !needsDraw) {
+    // Animation finished, process next step
+    isAnimating = false;
+    processAfterAnimation();
+  }
+  
+  draw();
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+// ========== MOVE PROCESSING ==========
+let pendingProcess = null;
+
+async function processSwap(r1, c1, r2, c2) {
+  isAnimating = true;
+  hintCells = null;
+  clearHintTimer();
+  
+  // Animate swap
+  swap(r1, c1, r2, c2);
+  swap(r1, c1, r2, c2); // swap back for animation
+  // We need to animate the visual swap
+  // Temporarily adjust displayY for the two cells
+  displayY[r1][c1] = r2;
+  displayY[r2][c2] = r1;
+  
+  // Actually swap the board
+  swap(r1, c1, r2, c2);
+  
+  // Wait for animation
+  await waitUntilSettled();
+  
+  // Check for matches
+  const matches = findMatches();
+  if (matches.size === 0) {
+    // Swap back - invalid move
+    swap(r1, c1, r2, c2);
+    displayY[r1][c1] = r2; // animate back
+    displayY[r2][c2] = r1;
+    await waitUntilSettled();
+    isAnimating = false;
+    return;
+  }
+  
+  // Valid move
+  moves++;
+  combo = 0;
+  updateUI();
+  
+  await processChain();
+}
+
+async function processChain() {
+  let matches = findMatches();
+  
+  while (matches.size > 0) {
+    combo++;
+    const { count, cells } = removeMatches(matches);
+    
+    // Calculate score
+    const baseScore = count * 10;
+    const comboMultiplier = combo;
+    const earnedScore = baseScore * comboMultiplier;
+    score += earnedScore;
+    
+    // Show combo popup
+    if (combo > 1) {
+      showComboPopup(combo);
+    }
+    
+    // Show score popup at match center
+    showScorePopup(cells, earnedScore);
+    
+    updateUI();
+    
+    // Brief flash for match removal
+    await sleep(120);
+    
+    // Apply gravity
+    applyGravity();
+    await waitUntilSettled();
+    
+    // Check for new matches
+    matches = findMatches();
+  }
+  
+  // Check if game over
+  if (!hasValidMoves()) {
+    shuffleBoard();
+    if (!hasValidMoves()) {
+      gameOver();
+    }
+  }
+  
+  isAnimating = false;
+  resetHintTimer();
+}
+
+function processAfterAnimation() {
+  // This is called when animation finishes
+  // The chain processing handles the flow
+}
+
+function waitUntilSettled() {
+  return new Promise(resolve => {
+    const check = () => {
+      let settled = true;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (Math.abs(displayY[r][c] - r) > 0.05) {
+            settled = false;
+            break;
+          }
+        }
+        if (!settled) break;
+      }
+      if (settled) resolve();
+      else requestAnimationFrame(check);
+    };
+    // Give a frame for the animation to start
+    requestAnimationFrame(check);
+  });
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ========== UI HELPERS ==========
+function showComboPopup(combo) {
+  const el = document.createElement('div');
+  el.className = 'combo-popup';
+  el.textContent = `COMBO x${combo}!`;
+  el.style.left = '50%';
+  el.style.top = '40%';
+  el.style.transform = 'translateX(-50%)';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+function showScorePopup(cells, score) {
+  if (cells.length === 0) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  let avgR = 0, avgC = 0;
+  cells.forEach(c => { avgR += c.r; avgC += c.c; });
+  avgR /= cells.length;
+  avgC /= cells.length;
+  
+  const el = document.createElement('div');
+  el.className = 'score-popup';
+  el.textContent = `+${score}`;
+  el.style.left = (canvasRect.left + avgC * cellSize + cellSize / 2) + 'px';
+  el.style.top = (canvasRect.top + avgR * cellSize) + 'px';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 700);
+}
+
+function updateUI() {
+  document.getElementById('score-display').textContent = score;
+  document.getElementById('combo-display').textContent = combo > 1 ? `x${combo}` : 'x1';
+  document.getElementById('combo-display').style.color = combo > 1 ? '#e94560' : '#ffd700';
+  document.getElementById('moves-display').textContent = moves;
+  document.getElementById('best-display').textContent = bestScore;
+}
+
+function clearHintTimer() {
+  if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
+  hintCells = null;
+}
+
+function resetHintTimer() {
+  clearHintTimer();
+  hintTimer = setTimeout(() => {
+    const hint = findHintMove();
+    if (hint) hintCells = hint;
+  }, 5000);
+}
+
+function gameOver() {
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('pixel_match3_best', bestScore);
+  }
+  document.getElementById('go-score').textContent = `得分: ${score}`;
+  document.getElementById('go-best').textContent = `最高: ${bestScore}`;
+  document.getElementById('gameover-overlay').classList.add('active');
+}
+
+// ========== INPUT ==========
+function getCellFromPos(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  const col = Math.floor(x / cellSize);
+  const row = Math.floor(y / cellSize);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null;
+  return { row, col };
+}
+
+function isAdjacent(a, b) {
+  return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+}
+
+// Touch/Mouse handling
+let touchStartCell = null;
+let touchStartTime = 0;
+
+canvas = document.getElementById('game-canvas');
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (isAnimating) return;
+  
+  const cell = getCellFromPos(e.clientX, e.clientY);
+  if (!cell) return;
+  
+  touchStartCell = cell;
+  touchStartTime = Date.now();
+});
+
+canvas.addEventListener('pointerup', (e) => {
+  e.preventDefault();
+  if (isAnimating || !touchStartCell) return;
+  
+  const cell = getCellFromPos(e.clientX, e.clientY);
+  if (!cell) { touchStartCell = null; return; }
+  
+  const elapsed = Date.now() - touchStartTime;
+  
+  // Check for swipe
+  if (cell.row === touchStartCell.row && cell.col === touchStartCell.col) {
+    // Tap - select / swap
+    if (selected && isAdjacent(selected, cell)) {
+      processSwap(selected.row, selected.col, cell.row, cell.col);
+      selected = null;
+    } else if (selected && selected.row === cell.row && selected.col === cell.col) {
+      selected = null;
+    } else {
+      selected = cell;
+      hintCells = null;
+    }
+  } else if (isAdjacent(touchStartCell, cell)) {
+    // Swipe to adjacent cell
+    selected = null;
+    processSwap(touchStartCell.row, touchStartCell.col, cell.row, cell.col);
+  }
+  
+  touchStartCell = null;
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  e.preventDefault();
+  // Could add drag preview here
+});
+
+// ========== SCREEN MANAGEMENT ==========
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function startGame() {
+  score = 0;
+  combo = 0;
+  moves = 0;
+  selected = null;
+  hintCells = null;
+  isAnimating = false;
+  
+  initCanvas();
+  initBoard();
+  updateUI();
+  showScreen('game-screen');
+  document.getElementById('gameover-overlay').classList.remove('active');
+  
+  // Start game loop
+  if (animFrame) cancelAnimationFrame(animFrame);
+  gameLoop();
+  resetHintTimer();
+}
+
+function restartGame() {
+  document.getElementById('gameover-overlay').classList.remove('active');
+  startGame();
+}
+
+function showHint() {
+  if (isAnimating) return;
+  const hint = findHintMove();
+  if (hint) {
+    hintCells = hint;
+    setTimeout(() => { hintCells = null; }, 2000);
+  }
+}
+
+function backToMenu() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  clearHintTimer();
+  document.getElementById('gameover-overlay').classList.remove('active');
+  showScreen('menu-screen');
+}
+
+// ========== LOAD BEST SCORE ==========
+bestScore = parseInt(localStorage.getItem('pixel_match3_best') || '0');
+
+// Handle resize
+window.addEventListener('resize', () => {
+  if (document.getElementById('game-screen').classList.contains('active')) {
+    initCanvas();
+  }
+});
+</script>
+</body>
+</html>
